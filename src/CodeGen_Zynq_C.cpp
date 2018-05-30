@@ -47,6 +47,10 @@ const string zynq_runtime =
     "int halide_zynq_subimage(const struct halide_buffer_t* image, struct cma_buffer_t* subimage, void *address_of_subimage_origin, int width, int height);\n"
     "int halide_zynq_hwacc_launch(struct cma_buffer_t bufs[]);\n"
     "int halide_zynq_hwacc_sync(int task_id);\n"
+    "int halide_zynq_cma_alloc_fd(struct halide_buffer_t *buf, int cma);\n"
+    "int halide_zynq_cma_free_fd(struct halide_buffer_t *buf, int cma);\n"
+    "int halide_zynq_hwacc_launch_fd(struct cma_buffer_t bufs[], int hwacc);\n"
+    "int halide_zynq_hwacc_sync_fd(int task_id, int hwacc);\n"
     "#ifdef __cplusplus\n"
     "}  // extern \"C\" {\n"
     "#endif\n";
@@ -92,9 +96,9 @@ void CodeGen_Zynq_C::visit(const ProducerConsumer *op) {
             stream << "_cma_bufs[" << i << "] = " << print_name(buffer_slices[i]) << ";\n";
         }
         do_indent();
-        stream << "int _process_id = halide_zynq_hwacc_launch(_cma_bufs);\n";
+        stream << "int _process_id = halide_zynq_hwacc_launch_fd(_cma_bufs, _fd_hwacc);\n";
         do_indent();
-        stream << "halide_zynq_hwacc_sync(_process_id);\n";
+        stream << "halide_zynq_hwacc_sync_fd(_process_id, _fd_hwacc);\n";
 
         buffer_slices.clear();
     } else {
@@ -107,13 +111,13 @@ void CodeGen_Zynq_C::visit(const Call *op) {
     if (op->is_intrinsic("halide_zynq_cma_alloc")) {
         internal_assert(op->args.size() == 1);
         string buffer = print_expr(op->args[0]);
-        rhs << "halide_zynq_cma_alloc(" << buffer << ")";
+        rhs << "halide_zynq_cma_alloc_fd(" << buffer << ", _fd_cma)";
         print_assignment(op->type, rhs.str());
     } else if (op->is_intrinsic("halide_zynq_cma_free")) {
         internal_assert(op->args.size() == 1);
         string buffer = print_expr(op->args[0]);
         do_indent();
-        stream << "halide_zynq_cma_free(" << buffer << ");\n";
+        stream << "halide_zynq_cma_free_fd(" << buffer << ", _fd_cma);\n";
     } else if (op->is_intrinsic("stream_subimage")) {
         /* IR:
            stream_subimage(direction, buffer_var, stream_var,

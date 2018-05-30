@@ -70,6 +70,21 @@ extern "C" {
 static int fd_hwacc = 0;
 static int fd_cma = 0;
 
+/* Forward declaration */
+int halide_zynq_init();
+void halide_zynq_free(void *user_context, void *ptr);
+int halide_zynq_cma_alloc(struct halide_buffer_t *buf);
+int halide_zynq_cma_free(struct halide_buffer_t *buf);
+int halide_zynq_subimage(const struct halide_buffer_t* image, struct cma_buffer_t* subimage, void *address_of_subimage_origin, int width, int height);
+int halide_zynq_hwacc_launch(struct cma_buffer_t bufs[]);
+int halide_zynq_hwacc_sync(int task_id);
+
+void halide_zynq_free(void *user_context, void *ptr);
+int halide_zynq_cma_alloc_fd(struct halide_buffer_t *buf, int cma);
+int halide_zynq_cma_free_fd(struct halide_buffer_t *buf, int cma);
+int halide_zynq_hwacc_launch_fd(struct cma_buffer_t bufs[], int hwacc);
+int halide_zynq_hwacc_sync_fd(int task_id, int hwacc);
+
 int halide_zynq_init() {
     if (fd_cma || fd_hwacc) {
         printf("Zynq runtime is already initialized.\n");
@@ -91,20 +106,51 @@ int halide_zynq_init() {
     return 0;
 }
 
+/*
+ * wrappers for functions that uses individual fd for drivers
+ */
 void halide_zynq_free(void *user_context, void *ptr) {
     // do nothing
 }
 
-static int cma_get_buffer(cma_buffer_t* ptr) {
-    return ioctl(fd_cma, GET_BUFFER, (long unsigned int)ptr);
-}
-
-static int cma_free_buffer(cma_buffer_t* ptr) {
-    return ioctl(fd_cma, FREE_IMAGE, (long unsigned int)ptr);
-}
-
 int halide_zynq_cma_alloc(struct halide_buffer_t *buf) {
-    if (fd_cma == 0) {
+    return halide_zynq_cma_alloc_fd(buf, fd_cma);
+}
+
+int halide_zynq_cma_free(struct halide_buffer_t *buf) {
+    return halide_zynq_cma_free_fd(buf, fd_cma);
+}
+
+int halide_zynq_hwacc_launch(struct cma_buffer_t bufs[]) {
+    return halide_zynq_hwacc_launch_fd(bufs, fd_hwacc);
+}
+
+int halide_zynq_hwacc_sync(int task_id) {
+    return halide_zynq_hwacc_sync_fd(task_id, fd_hwacc);
+}
+
+
+/*
+ * actual thread-independent implementation
+ */
+static int cma_get_buffer_fd(cma_buffer_t* ptr, int cma) {
+    if (!cma) {
+        printf("fd cma is 0\n");
+        return -1;
+    }
+    return ioctl(cma, GET_BUFFER, (long unsigned int)ptr);
+}
+
+static int cma_free_buffer_fd(cma_buffer_t* ptr, int cma) {
+    if (!cma) {
+        printf("fd cma is 0\n");
+        return -1;
+    }
+    return ioctl(cma, FREE_IMAGE, (long unsigned int)ptr);
+}
+
+int halide_zynq_cma_alloc_fd(struct halide_buffer_t *buf, int cma) {
+    if (cma == 0) {
         printf("Zynq runtime is uninitialized.\n");
         return -1;
     }
@@ -135,7 +181,7 @@ int halide_zynq_cma_alloc(struct halide_buffer_t *buf) {
     cbuf->height = buf->dim[nDims-1].extent;
     // TODO check stride of dimension are the same as width
     cbuf->stride = cbuf->width;
-    int status = cma_get_buffer(cbuf);
+    int status = cma_get_buffer_fd(cbuf, cma);
     if (status != 0) {
         free(cbuf);
         printf("cma_get_buffer() returned %d (failed).\n", status);
@@ -144,7 +190,7 @@ int halide_zynq_cma_alloc(struct halide_buffer_t *buf) {
 
     buf->device = (uint64_t) cbuf;
     buf->host = (uint8_t*) mmap(NULL, cbuf->stride * cbuf->height * cbuf->depth,
-                                PROT_WRITE, MAP_SHARED, fd_cma, cbuf->mmap_offset);
+                                PROT_WRITE, MAP_SHARED, cma, cbuf->mmap_offset);
 
     if ((void *) buf->host == (void *) -1) {
         free(cbuf);
@@ -154,15 +200,15 @@ int halide_zynq_cma_alloc(struct halide_buffer_t *buf) {
     return 0;
 }
 
-int halide_zynq_cma_free(struct halide_buffer_t *buf) {
-    if (fd_cma == 0) {
+int halide_zynq_cma_free_fd(struct halide_buffer_t *buf, int cma) {
+    if (cma == 0) {
         printf("Zynq runtime is uninitialized.\n");
         return -1;
     }
 
     cma_buffer_t *cbuf = (cma_buffer_t *)buf->device;
     munmap((void*)buf->host, cbuf->stride * cbuf->height * cbuf->depth);
-    cma_free_buffer(cbuf);
+    cma_free_buffer_fd(cbuf, cma);
     free(cbuf);
     return 0;
 }
@@ -177,21 +223,21 @@ int halide_zynq_subimage(const struct halide_buffer_t* image, struct cma_buffer_
     return 0;
 }
 
-int halide_zynq_hwacc_launch(struct cma_buffer_t bufs[]) {
-    if (fd_hwacc == 0) {
+int halide_zynq_hwacc_launch_fd(struct cma_buffer_t bufs[], int hwacc) {
+    if (hwacc == 0) {
         printf("Zynq runtime is uninitialized.\n");
         return -1;
     }
-    int res = ioctl(fd_hwacc, PROCESS_IMAGE, (long unsigned int)bufs);
+    int res = ioctl(hwacc, PROCESS_IMAGE, (long unsigned int)bufs);
     return res;
 }
 
-int halide_zynq_hwacc_sync(int task_id){
-    if (fd_hwacc == 0) {
+int halide_zynq_hwacc_sync_fd(int task_id, int hwacc) {
+    if (hwacc == 0) {
         printf("Zynq runtime is uninitialized.\n");
         return -1;
     }
-    int res = ioctl(fd_hwacc, PEND_PROCESSED, (long unsigned int)task_id);
+    int res = ioctl(hwacc, PEND_PROCESSED, (long unsigned int)task_id);
     return res;
 }
 
