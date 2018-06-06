@@ -368,8 +368,8 @@ Module lower(const vector<Function> &output_funcs, const string &pipeline_name, 
      /* Zynq driver variables */
      if (t.has_feature(Target::Zynq)) {
          /* insert at the back. well sort of*/
-         public_args.emplace_back(Argument("fd_hwacc", Argument::InputScalar, Int(32), 0));
-         public_args.emplace_back(Argument("fd_cma", Argument::InputScalar, Int(32), 0));
+         public_args.emplace_back(Argument("_fd_hwacc", Argument::InputScalar, Int(32), 0));
+         public_args.emplace_back(Argument("_fd_cma", Argument::InputScalar, Int(32), 0));
      }
 
     vector<InferredArgument> inferred_args = infer_arguments(s, outputs);
