@@ -87,8 +87,8 @@ void CodeGen_Zynq_C::visit(const ProducerConsumer *op) {
            kbufs[0] = kbuf_in0;
            kbufs[1] = kbuf_in1;
            kbufs[2] = kbuf_out;
-           int process_id halide_zynq_hwacc_launch(kbufs);
-           halide_pend_processed(process_id);
+           int process_id halide_zynq_hwacc_launch_fd(kbufs, _fd_hwacc);
+           halide_pend_processed_fd(process_id, _fd_hwacc);
         */
         // TODO check the order of buffer slices is consistent with
         // the order of DMA ports in the driver

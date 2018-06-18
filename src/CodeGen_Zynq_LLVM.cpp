@@ -17,7 +17,7 @@ CodeGen_Zynq_LLVM::CodeGen_Zynq_LLVM(Target t)
 
 void CodeGen_Zynq_LLVM::visit(const Realize *op) {
     internal_assert(ends_with(op->name, ".stream"));
-    llvm::StructType *kbuf_type = module->getTypeByName("UBuffer");
+    llvm::StructType *kbuf_type = module->getTypeByName("struct.UBuffer");
     internal_assert(kbuf_type);
     llvm::Constant *one = llvm::ConstantInt::get(i32_t, 1);
     Value *slice_ptr = builder->CreateAlloca(kbuf_type, one, op->name);
@@ -37,8 +37,8 @@ void CodeGen_Zynq_LLVM::visit(const ProducerConsumer *op) {
            kbufs[0] = kbuf_in0;
            kbufs[1] = kbuf_in1;
            kbufs[2] = kbuf_out;
-           int process_id halide_zynq_hwacc_launch(kbufs);
-           halide_pend_processed(process_id);
+           int process_id halide_zynq_hwacc_launch_fd(kbufs, _fd_hwacc);
+           halide_pend_processed_fd(process_id, _fd_hwacc);
         */
         // TODO check the order of buffer slices is consistent with
         // the order of DMA ports in the driver
@@ -58,14 +58,14 @@ void CodeGen_Zynq_LLVM::visit(const ProducerConsumer *op) {
                                                                         i);
             builder->CreateMemCpy(elem_ptr, slice_ptr, size_of_kbuf, 0);
         }
-
-        vector<Value *> process_args({slice_set});
-        llvm::Function *process_fn = module->getFunction("halide_zynq_hwacc_launch");
+        Value *fd = sym_get("_fd_hwacc", true);
+        vector<Value *> process_args({slice_set, fd});
+        llvm::Function *process_fn = module->getFunction("halide_zynq_hwacc_launch_fd");
         internal_assert(process_fn);
         Value *process_id = builder->CreateCall(process_fn, process_args);
 
-        vector<Value *> pend_args({process_id});
-        llvm::Function *pend_fn = module->getFunction("halide_zynq_hwacc_sync");
+        vector<Value *> pend_args({process_id, fd});
+        llvm::Function *pend_fn = module->getFunction("halide_zynq_hwacc_sync_fd");
         internal_assert(pend_fn);
         builder->CreateCall(pend_fn, pend_args);
 
@@ -76,18 +76,20 @@ void CodeGen_Zynq_LLVM::visit(const ProducerConsumer *op) {
 }
 
 void CodeGen_Zynq_LLVM::visit(const Call *op) {
-    if (op->is_intrinsic("halide_zynq_cma_alloc")) {
+    if (op->is_intrinsic("halide_zynq_cma_alloc_fd")) {
         internal_assert(op->args.size() == 1);
         Value *buffer = codegen(op->args[0]);
-        llvm::Function *fn = module->getFunction("halide_zynq_cma_alloc");
+        Value *fd = codegen(op->args[1]);
+        llvm::Function *fn = module->getFunction("halide_zynq_cma_alloc_fd");
         internal_assert(fn);
-        value = builder->CreateCall(fn, {buffer});
+        value = builder->CreateCall(fn, {buffer, fd});
     } else if (op->is_intrinsic("halide_zynq_cma_free")) {
         internal_assert(op->args.size() == 1);
         Value *buffer = codegen(op->args[0]);
-        llvm::Function *fn = module->getFunction("halide_zynq_cma_free");
+        Value *fd = codegen(op->args[1]);
+        llvm::Function *fn = module->getFunction("halide_zynq_cma_free_fd");
         internal_assert(fn);
-        value = builder->CreateCall(fn, {buffer});
+        value = builder->CreateCall(fn, {buffer, fd});
     } else if (op->is_intrinsic("stream_subimage")) {
         /* IR:
            stream_subimage(direction, buffer_var, stream_var,

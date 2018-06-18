@@ -186,7 +186,7 @@ Module lower(const vector<Function> &output_funcs, const string &pipeline_name, 
         s = extract_hw_kernel_dag(s, env, inlined_stages, dags);
 
         for(const HWKernelDAG &dag : dags) {
-            s = stream_opt(s, dag);
+            s = stream_opt(s, dag, t);
             //s = replace_image_param(s, dag);
         }
 
