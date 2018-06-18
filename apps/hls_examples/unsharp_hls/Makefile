@@ -41,7 +41,7 @@ run_zynq.o: run_zynq.cpp
 	$(CXX) -c $(CXXFLAGS) $(HLS_IFLAG) -g -Wall -Werror $^ -o $@  $(PNGFLAGS)
 
 HalideRuntimeZynq.o: ../hls_support/HalideRuntimeZynq.cpp
-	$(CXX) -Wall -Werror %^ -o $@
+	$(CXX) -Wall -Werror -I ../../../src/runtime $^ -c -o $@
 
 run_zynq: pipeline_zynq.o pipeline_native.o run_zynq.o HalideRuntimeZynq.o
 	$(CXX) -Wall -Werror $^ -lpthread -ldl -o $@  $(IMAGE_IO_FLAGS)
@@ -54,6 +54,7 @@ clean:
 	rm -f out.png out_zynq.png
 	rm -f pipeline_native.h pipeline_native.o
 	rm -f pipeline_hls.h pipeline_hls.cpp
-	rm -f pipeline_zynq.h pipeline_zynq.c pipeline_zynq.o
+	rm -f pipeline_zynq.h pipeline_zynq.c pipeline_zynq.o pipeline_zynq.s
 	rm -f run_zynq.o
 	rm -f hls_target.h hls_target.cpp
+	rm -f pipeline_cuda.*
