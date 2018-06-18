@@ -38,8 +38,8 @@ typedef struct buffer_t {
 } buffer_t;
 #endif
 
-#ifndef _IOCTL_USER_CMDS_H_
-#define _IOCTL_USER_CMDS_H_
+#ifndef _IOCTL_CMDS_H_
+#define _IOCTL_CMDS_H_
 
 #define MAGIC			'Z'
 
@@ -119,65 +119,16 @@ static int fd_hwacc = 0;
 static int fd_cma = 0;
 
 /* Forward declaration */
-int halide_zynq_init();
-void halide_zynq_free(void *user_context, void *ptr);
-int halide_zynq_cma_alloc(struct halide_buffer_t *buf);
-int halide_zynq_cma_free(struct halide_buffer_t *buf);
 int halide_zynq_subimage(const struct halide_buffer_t* image, struct UBuffer* subimage, void *address_of_subimage_origin, int width, int height);
-int halide_zynq_hwacc_launch(struct cma_buffer_t bufs[]);
-int halide_zynq_hwacc_sync(int task_id);
-
 void halide_zynq_free(void *user_context, void *ptr);
 int halide_zynq_cma_alloc_fd(struct halide_buffer_t *buf, int cma);
 int halide_zynq_cma_free_fd(struct halide_buffer_t *buf, int cma);
 int halide_zynq_hwacc_launch_fd(struct UBuffer bufs[], int hwacc);
 int halide_zynq_hwacc_sync_fd(int task_id, int hwacc);
 
-int halide_zynq_init() {
-    if (fd_cma || fd_hwacc) {
-        printf("Zynq runtime is already initialized.\n");
-        return -1;
-    }
-    fd_cma = open("/dev/cmabuffer0", O_RDWR, 0644);
-    if(fd_cma == -1) {
-        printf("Failed to open cma provider!\n");
-        fd_cma = fd_hwacc = 0;
-        return -2;
-    }
-    fd_hwacc = open("/dev/hwacc0", O_RDWR, 0644);
-    if(fd_hwacc == -1) {
-        printf("Failed to open hwacc device!\n");
-        close(fd_cma);
-        fd_cma = fd_hwacc = 0;
-        return -2;
-    }
-    return 0;
-}
-
-/*
- * wrappers for functions that uses individual fd for drivers
- */
 void halide_zynq_free(void *user_context, void *ptr) {
     // do nothing
 }
-
-int halide_zynq_cma_alloc(struct halide_buffer_t *buf) {
-    return halide_zynq_cma_alloc_fd(buf, fd_cma);
-}
-
-int halide_zynq_cma_free(struct halide_buffer_t *buf) {
-    return halide_zynq_cma_free_fd(buf, fd_cma);
-}
-
-int halide_zynq_hwacc_launch(struct cma_buffer_t bufs[]) {
-    /* not supported anymore */
-    return -1 ; //return halide_zynq_hwacc_launch_fd(bufs, fd_hwacc);
-}
-
-int halide_zynq_hwacc_sync(int task_id) {
-    return halide_zynq_hwacc_sync_fd(task_id, fd_hwacc);
-}
-
 
 /*
  * actual thread-independent implementation
