@@ -86,6 +86,9 @@ typedef struct buffer_t {
 /* user buffer declaration */
 typedef struct UBuffer {
 	U32_TYPE id;		// ID flag for internal use
+    U32_TYPE offset;    // used for slicing purposes
+                        // this is the offset in bytes
+                        // from the beginning of root buffer
 	U32_TYPE width;		// width of the image
 	U32_TYPE height;	// height of the image
 	U32_TYPE stride;	// stride of the image
@@ -125,9 +128,29 @@ int halide_zynq_cma_alloc_fd(struct halide_buffer_t *buf, int cma);
 int halide_zynq_cma_free_fd(struct halide_buffer_t *buf, int cma);
 int halide_zynq_hwacc_launch_fd(struct UBuffer bufs[], int hwacc);
 int halide_zynq_hwacc_sync_fd(int task_id, int hwacc);
+void buffer_to_stencil(struct halide_buffer_t* image, struct UBuffer* stencil, int cma);
 
 void halide_zynq_free(void *user_context, void *ptr) {
     // do nothing
+}
+
+void buffer_to_stencil(struct halide_buffer_t* image, struct UBuffer* stencil, int cma) {
+    size_t nDims = image->dimensions;
+    if (nDims < 2) {
+        printf("buffer_t has less than 2 dimension, not supported in CMA driver.");
+    }
+    stencil->width = image->dim[nDims - 2].extent; // length of the array
+    stencil->height = image->dim[nDims - 1].extent;
+    stencil->depth = (image->type.bits + 7) / 8;
+    if (stencil->height != 1)
+        printf("stencil height is not 1\n");
+    // we assume tap values are 1D array. hence its height = 1,
+    // as a result, we can use this to tell tap/stream apart
+    // TODO: may consider add another field to UBuffer to indicate the value
+    // currently put mem address to the id(high) and stride(low) field
+    uint64_t addr = (uint64_t)image->host;
+    stencil->id = 0xFFFFFFFF & (addr >> 32);
+    stencil->stride = 0xFFFFFFFF & addr;
 }
 
 /*
@@ -219,14 +242,7 @@ int halide_zynq_subimage(const struct halide_buffer_t* image, struct UBuffer* su
     subimage->height = height;
     size_t offset = (uint8_t *)address_of_subimage_origin - image->host;
     
-    //subimage->phys_addr += offset;
-    //subimage->mmap_offset += offset;
-    
-    /* the current implementation doesn't support offset any more */
-    if (offset != 0) {
-        printf("[ERROR]: subimage offset not 0\n");
-        return -1;
-    }
+    subimage->offset = offset; 
 
     return 0;
 }

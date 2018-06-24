@@ -32,6 +32,7 @@ const string zynq_runtime =
 	"/* user buffer declaration */\n"
 	"typedef struct UBuffer {\n"
 		"U32_TYPE id;		// ID flag for internal use\n"
+        "U32_TYPE offset;   // used for slicing purposes\n"
 		"U32_TYPE width;		// width of the image\n"
 		"U32_TYPE height;	// height of the image\n"
 		"U32_TYPE stride;	// stride of the image\n"
@@ -54,6 +55,7 @@ const string zynq_runtime =
     "int halide_zynq_cma_free_fd(struct halide_buffer_t *buf, int cma);\n"
     "int halide_zynq_hwacc_launch_fd(struct UBuffer bufs[], int hwacc);\n"
     "int halide_zynq_hwacc_sync_fd(int task_id, int hwacc);\n"
+    "void buffer_to_stencil(struct halide_buffer_t* image, struct UBuffer* stencil, int cma);\n"
     "#ifdef __cplusplus\n"
     "}  // extern \"C\" {\n"
     "#endif\n";
@@ -67,7 +69,7 @@ CodeGen_Zynq_C::CodeGen_Zynq_C(ostream &dest,
 }
 
 void CodeGen_Zynq_C::visit(const Realize *op) {
-    internal_assert(ends_with(op->name, ".stream"));
+    //internal_assert(ends_with(op->name, ".stream"));
     open_scope();
     string slice_name = op->name;
     buffer_slices.push_back(slice_name);
@@ -160,6 +162,18 @@ void CodeGen_Zynq_C::visit(const Call *op) {
             << print_expr(l->index)
             << ")";
         print_assignment(op->type, rhs.str());
+    } else if (op->name == "buffer_to_stencil") {
+        /**
+         * disguise tap value as buffer and handle that in the kernel driver,
+         * assuming tap values are one-dimensional array
+         * (at least for the current applications).
+         */
+        internal_assert(op->args.size() == 2);
+        do_indent();
+        stream << "buffer_to_stencil("
+                  << print_expr(op->args[0]) << ", &"
+                  << print_expr(op->args[1]) << ", _fd_cma);\n";
+        id = "0"; // skip evaluation
     } else {
         CodeGen_C::visit(op);
     }
